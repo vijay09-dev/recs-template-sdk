@@ -11,12 +11,18 @@ import environment from './environment';
      */
 
     /** Function for fetching api requests */
-    function fetchData(url, cb) {
+    function fetchData(url, setHeader, cb) {
         var xhttp = new XMLHttpRequest();
         xhttp.onreadystatechange = function () {
+
             if (this.readyState == 4 && (this.status == 200 || this.status == 204)) {
                 // Typical action to be performed when the document is ready:
-                cb(null, xhttp.responseText);
+                var requestId 
+                // Get request id only during call of recommendation API
+                if(setHeader){
+                    requestId = this.getResponseHeader("x-request-id");
+                }
+                cb(null, xhttp.responseText, requestId);
             }
             else if (this.readyState == 4 && (this.status != 200 || this.status != 204)) {
                 cb('Invalid network request: ' + url);
@@ -26,6 +32,8 @@ import environment from './environment';
             cb('Failed network request: ' + url);
         }
         xhttp.open("GET", url, true);
+        if(setHeader)
+            xhttp.setRequestHeader("unbxd-device-type", window.unbxdDeviceType);
         xhttp.send();
     }
 
@@ -72,7 +80,6 @@ import environment from './environment';
         return false;
     
     };
-
     var MOBILE = 'mobile';
     var DESKTOP = 'desktop';
     var SMALL = 'small';
@@ -230,12 +237,13 @@ import environment from './environment';
             clickHandler(recommendationsModified[parent2ArrayIndex][parent1ArrayIndex]);
         }
     }
-
     function handleSizeCalculations(targetDOMElementId, options) {
         var rexConsoleConfigs = options.rexConsoleConfigs;
         var recommendations = options.recommendations;
         var clickHandler = options.clickHandler;
         var itemsToShow = options.itemsToShow;
+        var itemWidth = options.itemWidth;
+        var itemWidthUnit = options.itemWidthUnit;
         var maxProducts = options.maxProducts;
         var assets = options.assets;
         var sliderType = options.sliderType;
@@ -245,6 +253,7 @@ import environment from './environment';
         var domSelector = "#" + targetDOMElementId + sliderContent.containerId;
         var sliderContainer = document.querySelector(domSelector);
         var widgetWidth = options.widgetWidth;
+        var ratingFeature = rexConsoleConfigs.products.ratings_feature || rexConsoleConfigs.products.ratingsFeature;
 
         if (!sliderContainer) {
             return sendWarning('The slider container id was not found. Script can not continue');
@@ -320,11 +329,11 @@ import environment from './environment';
                             newnode.innerHTML = rexConsoleConfigs.products.currency+ dimension;
                         }
                     }
-                    else if(rexConsoleConfigs.products.ratings_feature &&
-                        rexConsoleConfigs.products.ratings_feature.enabled &&
+                    else if(ratingFeature &&
+                        ratingFeature.enabled &&
                         productFields[j].unbxdDimensionKey &&
                         productFields[j].unbxdDimensionKey.toLowerCase() == "rating" ){
-                        var ratingContentData = getRatingContent(recommendations[i], rexConsoleConfigs.products.ratings_feature, domSelector, productAttributeKey);
+                        var ratingContentData = getRatingContent(recommendations[i], ratingFeature, domSelector, productAttributeKey);
                         if(ratingContentData){
                             newnode.innerHTML = ratingContentData;
                         }
@@ -334,7 +343,7 @@ import environment from './environment';
                             newnode.innerHTML = "";
                         }
                         else {
-                            newnode.innerHTML = dimension;
+                            newnode.innerHTML = (dimension instanceof Array) ? dimension.join(', ') : dimension;
                         }
                     }
 
@@ -377,9 +386,26 @@ import environment from './environment';
                         }
                         sliderContainer.style.width = sliderContainer[sliderContent.offsetDimension] + "px";
                         var hzSliderWidth = (sliderContainer[sliderContent.offsetDimension] - (itemsToShow * margin)) / itemsToShow;
-                        for (i = 0; i < sliderItems.length; i++) {
-                            sliderItems[i].style.width = hzSliderWidth + "px";
-                            recsSlider.style.width = (maxprodLimit * hzSliderWidth) + (maxprodLimit) * margin + "px";
+                        if(itemWidth){
+                            if(itemWidthUnit === "%"){
+                                var itemWidthPercentToPx = (itemWidth * 0.01 * sliderContainer[sliderContent.offsetDimension])
+                                for (var i = 0; i < sliderItems.length; i++) {
+                                    sliderItems[i].style.width = itemWidthPercentToPx + "px" ;
+                                    recsSlider.style.width = (maxprodLimit * itemWidthPercentToPx) + (maxprodLimit) * margin + "px";
+                                    
+                                }
+                            }else{
+                                for (var i = 0; i < sliderItems.length; i++) {
+                                    sliderItems[i].style.width = itemWidth + itemWidthUnit ;
+                                    recsSlider.style.width = (maxprodLimit * itemWidth) + (maxprodLimit) * margin + itemWidthUnit;
+                                    
+                                }
+                            }
+                        }else{
+                            for (var i = 0; i < sliderItems.length; i++) {
+                                sliderItems[i].style.width = hzSliderWidth + "px";
+                                recsSlider.style.width = (maxprodLimit * hzSliderWidth) + (maxprodLimit) * margin + "px";
+                            }
                         }
                         var opaqueElSelector = document.querySelector("#"+targetDOMElementId + " ._unxbd_slider_hide");
                         opaqueElSelector.classList.remove("_unxbd_slider_hide");
@@ -398,8 +424,14 @@ import environment from './environment';
                         if(sliderRootContainer.clientWidth < sliderParentContainer.clientWidth){
                             sliderParentContainer.style.width = sliderRootContainer.clientWidth + "px";
                         }
-                        for (i = 0; i < sliderItems.length; i++) {
-                            sliderItems[i].style.width = sliderParentContainer.clientWidth - 2 * margin + "px";
+                        if(itemWidth){
+                            for (var i = 0; i < sliderItems.length; i++) {
+                                sliderItems[i].style.width = itemWidth + itemWidthUnit ;
+                            }
+                        }else{
+                            for (var i = 0; i < sliderItems.length; i++) {
+                                sliderItems[i].style.width = sliderParentContainer.clientWidth - 2 * margin + "px";
+                            }
                         }
                         recsSlider.style.width = (sliderParentContainer.clientWidth) * recommendationsModified.length + "px";
                         var opaqueElSelector = document.querySelector("#"+targetDOMElementId + " ._unxbd_slider_hide");
@@ -455,7 +487,7 @@ import environment from './environment';
             "half_rating": "_unbxd_rex-half-star",
             "full_rating": "_unbxd_rex-full-star"
         }
-        for (i = 0; i < assets.length; i++) {
+        for (var i = 0; i < assets.length; i++) {
             var horizontalAssetItem = assets[i];
             imgArr.push(
                 {
@@ -486,6 +518,13 @@ import environment from './environment';
         /** End of Setting styles for heading */
     }
 
+
+    global.eventQueue = {};
+    global._unbxd_registerHook = function (eventName, eventCallback){
+        global.eventQueue[eventName] = eventCallback;
+    }
+
+
     /** exporting a global function to initialize recs slider */
     global._unbxd_generateRexContent = function (options) {
         // console.log(options)
@@ -498,7 +537,9 @@ import environment from './environment';
         var itemsToShow = rexConsoleConfigs.products.visible || missingValueError('products.visible', rexConsoleConfigs);
         var maxProducts = rexConsoleConfigs.products.max || missingValueError('products.max', rexConsoleConfigs.products);
         var clickHandler = options.clickHandler;
-        var isVertical = options.isVertical;
+        var dataParser = options.dataParser;
+        var eventQueue = options.eventQueue;
+        var isVertical = options.isVertical || false;
         var compressedStyle = rexConsoleConfigs.css || missingValueError('css',rexConsoleConfigs);
         var recommendationsModified = null;
         var widgetWidthData = rexConsoleConfigs.widget.width || missingValueError('products.widget.width', rexConsoleConfigs.widget);
@@ -515,9 +556,34 @@ import environment from './environment';
         // console.log(window.innerWidth);
         var device = getDeviceType();
         var browserSize = getBrowserSize();
-        if (device === MOBILE || browserSize === SMALL) {
-            const itemsToShowOnMobile = rexConsoleConfigs.products.visibleOnMobile;
+        var itemsToShowOnMobile, itemWidth, itemWidthUnit;
+        
+        if(window.unbxdDeviceType === "mobile-browser" || options.unbxdDeviceType === "mobile-browser"){
+            itemWidth = (rexConsoleConfigs.products && rexConsoleConfigs.products.width && rexConsoleConfigs.products.width.value) || 0;
+            itemWidthUnit = (rexConsoleConfigs.products && rexConsoleConfigs.products.width && rexConsoleConfigs.products.width.unit) || 'px';
+            if(rexConsoleConfigs && rexConsoleConfigs.products && rexConsoleConfigs.products.visibleOn){
+                itemsToShowOnMobile = rexConsoleConfigs.products.visibleOn.mobile;
+            }else{
+                itemsToShowOnMobile = rexConsoleConfigs.products.visible;
+            }
             itemsToShow = itemsToShowOnMobile ? itemsToShowOnMobile : 2;
+        }
+        else if (device === MOBILE || browserSize === SMALL){
+            itemWidth = (rexConsoleConfigs.products && rexConsoleConfigs.products.width && rexConsoleConfigs.products.width.value) || 0;
+            itemWidthUnit = (rexConsoleConfigs.products && rexConsoleConfigs.products.width && rexConsoleConfigs.products.width.unit) || 'px';
+            if(rexConsoleConfigs && rexConsoleConfigs.products && rexConsoleConfigs.products.visibleOn){
+                itemsToShowOnMobile = rexConsoleConfigs.products.visibleOn.mobile;
+            }else{
+                itemsToShowOnMobile = rexConsoleConfigs.products.visible;
+            }
+            itemsToShow = itemsToShowOnMobile ? itemsToShowOnMobile : 2;
+        }else{
+            if(rexConsoleConfigs && rexConsoleConfigs.products && rexConsoleConfigs.products.visibleOn){
+                itemsToShow = rexConsoleConfigs.products.visibleOn.desktop;
+            }else{
+                itemsToShow = rexConsoleConfigs.products.visible;
+            }
+            itemsToShow = itemsToShow ? itemsToShow: 2;
         }
  
         if (!renderTargetEl) {
@@ -538,10 +604,26 @@ import environment from './environment';
             }
         }
 
-        document.getElementById(targetDOMElementId).innerHTML = renderFn({
+        var templateData = {
             recommendations: recommendationsModified || recommendations,
-            heading: heading
-        });
+            heading: heading, 
+            analyticsData: {
+                widgetNum: 'WIDGET'+ options.widgetNum,
+                pageType: options.pageType,
+                requestId: options.reqId
+            }
+        }
+
+        /* Callback to make any modification to data and pass on the modified data to renderFn  */
+        if (dataParser && typeof(dataParser) === "function") {
+            templateData = dataParser(templateData)
+        }
+        if (eventQueue && typeof(eventQueue['beforeTemplateRender']) === "function") {
+            var beforeTemplateRenderCallback = eventQueue['beforeTemplateRender']
+            templateData = beforeTemplateRenderCallback(templateData);
+         }
+        
+        document.getElementById(targetDOMElementId).innerHTML = renderFn(templateData);
 
         /** Dynamically adjusting width based on no of items to be shown */
         var sliderOptionsConfig = {
@@ -550,10 +632,12 @@ import environment from './environment';
             recommendationsModified: recommendationsModified,
             clickHandler: clickHandler,
             itemsToShow: itemsToShow,
+            itemWidth: itemWidth,
+            itemWidthUnit: itemWidthUnit,
             maxProducts: maxProducts,
             assets: options.assets,
-            sliderType: isVertical ? "vertical" : "horizontal",
-            sliderClass: isVertical ? "_unbxd_recs-vertical-slider" : "_unbxd_recs-slider",
+            sliderType: (isVertical || !window.unbxdDeviceType === "mobile-browser") ? "vertical" : "horizontal",
+            sliderClass: (isVertical || !window.unbxdDeviceType === "mobile-browser") ? "_unbxd_recs-vertical-slider" : "_unbxd_recs-slider",
             widgetWidth: widgetWidth
         }
 
@@ -561,10 +645,12 @@ import environment from './environment';
         if (isVertical) {
             global._unbxd_recsItemToScrollVt = itemsToShow;
         }
+        else if(window.unbxdDeviceType === "mobile-browser"){
+            global._unbxd_recsItemToScrollHz = itemsToShow;
+        }
         else {
             global._unbxd_recsItemToScrollHz = itemsToShow;
         }
-
 
             /** Attaching styles for the slider */
         var eventHandlerStyle = document.createElement('style');
@@ -574,6 +660,13 @@ import environment from './environment';
         document.head.appendChild(eventHandlerStyle);
 
         handleSizeCalculations(targetDOMElementId, sliderOptionsConfig);
+
+        /* Callback to make any modification to data and pass on the modified data to renderFn  */
+        if (eventQueue && typeof(eventQueue['afterTemplateRender']) === "function") {
+            var afterTemplateRenderCallback = eventQueue['afterTemplateRender']
+            templateData = afterTemplateRenderCallback(isVertical);
+         }
+     
     }
 
 
@@ -612,8 +705,28 @@ import environment from './environment';
             return pageTypeLocal;
         }
 
+        function getTemplateDetails(context){
+            var device = getDeviceType();
+            var browserSize = getBrowserSize();
+
+            if(context.unbxdDeviceType && context.unbxdDeviceType.mobileBrowser)
+                return "mobile-browser";
+            else if(context.unbxdDeviceType && context.unbxdDeviceType.desktopBrowser)
+                return "desktop-browser";
+            else if(device === MOBILE || browserSize === SMALL){
+                return "mobile-browser";
+            }
+            else{
+                return "desktop-browser";
+            }
+        }
+
         function getClickHandler(context) {
             return context.itemClickHandler;
+        }
+
+        function getDataParserHandler(context) {
+            return context.dataParser;
         }
 
         function getUrlEncodedParam(paramName, paramValue) {
@@ -632,8 +745,29 @@ import environment from './environment';
             return queryStringLocal;
         }
 
+        function getCookie(key) {
+            var allcookies = document.cookie;
+            var name, value;
+           
+            // Get all the cookies pairs in an array
+            var cookiearray = allcookies.split(';');
+            
+            // Now take key value pair out of this array
+            for(var i=0; i<cookiearray.length; i++) {
+               name = cookiearray[i].split('=')[0];
+               value = cookiearray[i].split('=')[1];
+               //document.write ("Key is : " + name + " and Value is : " + value);
+               if(name.trim() === key){
+                   return value;
+               }
+            }
+         }
+
         // getting page info
         var pageType = getPageDetails(context.pageInfo);
+
+        // getting template Info
+       window.unbxdDeviceType = getTemplateDetails(context)
 
         // get widget if
         var widgets = context.widgets;
@@ -644,16 +778,18 @@ import environment from './environment';
             throw new Error('No widget id provided');
         }
         var itemClickHandler = getClickHandler(context);
+        var dataParser = getDataParserHandler(context);
+        var eventQueue = global.eventQueue;
 
         // getting userId, siteKey and apiKey
         var userInfo = context.userInfo;
-        if (!userInfo) {
-            throw new Error("User info missing")
-        }
+        // if (!userInfo) {
+        //     throw new Error("User info missing")
+        // }
 
-        var userId = userInfo.userId;
-        var siteKey = userInfo.siteKey;
-        var apiKey = userInfo.apiKey;
+        var userId = (userInfo && userInfo.userId) || getCookie('unbxd.userId');
+        var siteKey = (userInfo && userInfo.siteKey) || global.UnbxdSiteName;
+        var apiKey =  (userInfo && userInfo.apiKey)  ||global.UnbxdApiKey;
 
         var requestUrl = platformDomain + apiKey + "/" + siteKey + '/items?&template=true&pageType=';
 
@@ -670,6 +806,7 @@ import environment from './environment';
         }
 
         requestUrl += encodeURIComponent(pageType);
+        // requestUrl += "&unbxdDeviceType=" + encodeURIComponent(window.unbxdDeviceType);
         var pageInfo = context.pageInfo;
         switch (pageType.toLowerCase()) {
             case PRODUCT_PAGE:
@@ -707,7 +844,7 @@ import environment from './environment';
 
         requestUrl += "&uid=" + userId;
 
-        function renderWidgetDataHorizontal(widget, recommendations, heading) {
+        function renderWidgetDataHorizontal(widget, widgetNum, recommendations, heading) {
             var maxProducts = horizontalConfig.products.max || horizontalConfig.products.max_products;
             var targetDOMElementId = widget;
             var clickHandler = itemClickHandler;
@@ -724,15 +861,20 @@ import environment from './environment';
                     assets: horizontalAssets,
                     maxProducts: maxProducts,
                     clickHandler: clickHandler,
+                    dataParser: dataParser,
+                    eventQueue: eventQueue,
+                    widgetNum: widgetNum,
+                    pageType: pageType,
+                    reqId: reqId,
                     sliderClass: "_unbxd_recs-slider",
                     compressedStyle: compressedStyle
                 }
                 _unbxd_generateRexContent(options);
             }
-        }
+        } 
 
 
-        function renderWidgetDataVertical(widget, recommendations, heading) {
+        function renderWidgetDataVertical(widget, widgetNum, recommendations, heading) {
             var maxProducts = verticalConfig.products.max || verticalConfig.products.max_products;
             var targetDOMElementId = widget;
             var clickHandler = itemClickHandler;
@@ -750,6 +892,11 @@ import environment from './environment';
                     assets: verticalAssets,
                     maxProducts: maxProducts,
                     clickHandler: clickHandler,
+                    eventQueue: eventQueue,
+                    dataParser: dataParser,
+                    widgetNum: widgetNum,
+                    pageType: pageType,
+                    reqId: reqId,
                     isVertical: true,
                     sliderClass: "_unbxd_recs-vertical-slider",
                     compressedStyle: compressedStyleVertical
@@ -764,7 +911,7 @@ import environment from './environment';
                 var widget3Data = recommendationsResponse.widget3;
                 var widget3Heading = widget3Data.widgetTitle;
                 var widget3Recommendations = widget3Data.recommendations;
-                renderWidgetDataVertical(widget3, widget3Recommendations, widget3Heading);
+                renderWidgetDataVertical(widget3, 3, widget3Recommendations, widget3Heading);
             }
         }
 
@@ -773,13 +920,13 @@ import environment from './environment';
                 var widget1Data = recommendationsResponse.widget1;
                 var widget1Heading = widget1Data.widgetTitle;
                 var widget1Recommendations = widget1Data.recommendations;
-                renderWidgetDataHorizontal(widget1, widget1Recommendations, widget1Heading);
+                renderWidgetDataHorizontal(widget1, 1, widget1Recommendations, widget1Heading);
             }
             if (widget2) {
                 var widget2Data = recommendationsResponse.widget2;
                 var widget2Heading = widget2Data.widgetTitle;
                 var widget2Recommendations = widget2Data.recommendations;
-                renderWidgetDataHorizontal(widget2, widget2Recommendations, widget2Heading);
+                renderWidgetDataHorizontal(widget2, 2, widget2Recommendations, widget2Heading);
             }
 
         }
@@ -811,44 +958,48 @@ import environment from './environment';
         var verticalTemplate;
         var compressedStyle;
         var compressedStyleVertical;
-        fetchData(requestUrl, function (err, res) {
+        var reqId;
+        fetchData(requestUrl, true,  function (err, res, requestId) {
             // fetching data specific to a page type
             if (err) {
                 throw new Error('Failed to fetch recommendations');
             }
             recommendationsResponse = JSON.parse(res);
 
-            // horizontal templates configuration
-            horizontalTemplate = recommendationsResponse.template.horizontal;
-            if(horizontalTemplate){
-                horizontalConfig = horizontalTemplate.conf;
-                horizontalAssets = horizontalConfig.assets;
-                var templateUrlHorizontal = horizontalTemplate.scriptUrl;
-                if(templateUrlHorizontal){
-                    
-                    /** Fetch template layout string */
-                    fetchData(templateUrlHorizontal, horizontalTemplateHandler);
+            // horizontal desktop templates configuration
+                horizontalTemplate = recommendationsResponse.template.horizontal;
+                reqId = requestId;
+                if(horizontalTemplate){
+                    horizontalConfig = horizontalTemplate.conf;
+                    horizontalAssets = horizontalConfig.assets;
+                    var templateUrlHorizontal = horizontalTemplate.scriptUrl;
+                    if(templateUrlHorizontal){
+                        
+                        /** Fetch template layout string */
+                        fetchData(templateUrlHorizontal,false,  horizontalTemplateHandler);
+                    }
+                    else{
+                        console.warn("script url not found for horizontal template")
+                    }
+                }       
+                // vertical templates configuration
+                verticalTemplate = recommendationsResponse.template.vertical;
+                if(verticalTemplate){
+                    verticalConfig = verticalTemplate.conf;
+                    verticalAssets = verticalConfig.assets;
+                    var templateUrlVertical = verticalTemplate.scriptUrl;
+                    if(templateUrlVertical){
+                        /** Fetch vertical template layout string */
+                        fetchData(templateUrlVertical,false,  verticalTemplateHandler);
+                    }
+                    else{
+                        console.warn("script url not found for vertical template")
+                    }
                 }
-                else{
-                    console.warn("script url not found for horizontal template")
-                }
-            }       
-            // vertical templates configuration
-            verticalTemplate = recommendationsResponse.template.vertical;
-            if(verticalTemplate){
-                verticalConfig = verticalTemplate.conf;
-                verticalAssets = verticalConfig.assets;
-                var templateUrlVertical = verticalTemplate.scriptUrl;
-                if(templateUrlVertical){
-                    /** Fetch vertical template layout string */
-                    fetchData(templateUrlVertical, verticalTemplateHandler);
-                }
-                else{
-                    console.warn("script url not found for vertical template")
-                }
-            }
         });
     }
+
+   
 })(window);
 
 
